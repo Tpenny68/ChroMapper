@@ -137,7 +137,7 @@
 
 
         [Header(Others)] [Space]
-        [KeywordEnum(Standard, Song Time, Freeze)] _Custom_Time ("Time Behavior", float) = 0
+        [KeywordEnum(Standard, Song Time, Freeze)] _Custom_Time ("Standard", float) = 0
         [KeywordEnum(After Emissive, Before Emissive)] _ACES_Approach ("ACES Approach", float) = 0
         [Toggle(COLOR_ARRAY)] _UseColorArray ("Color Array", float) = 0
 
@@ -250,6 +250,7 @@
             #include "ShaderLibrary/CustomLighting.hlsl"
             #include "ShaderLibrary/CustomTime.hlsl"
             #include "ShaderLibrary/CustomTonemapping.hlsl"
+            #include "Packages/com.llealloo.audiolink/Runtime/Shaders/AudioLink.cginc"
 
             #define USE_UV_SCALE defined(_SECONDARY_UVS_EXTERNAL_SCALE) || defined(_SECONDARY_UVS_OBJECT_SPACE)
             #define USE_SECONDARY_UV USE_UV_SCALE || defined(_SECONDARY_UVS_IMPORT) || defined(_SECONDARY_UVS_ADDITIVE_OFFSET)
@@ -454,7 +455,7 @@
                 #endif
                 UNITY_VERTEX_INPUT_INSTANCE_ID};
 
-            v2f vert(appdata i)
+            v2f vert(appdata i, uint id : SV_VertexID)
             {
                 v2f o;
 
@@ -463,34 +464,34 @@
 
                 o.vertex = UnityObjectToClipPos(i.vertex);
                 #if USE_VERTEX_COLOR
-                o.color = i.color;
-                // TODO: wtf does this do
-                #if USE_VERTEX_EMISSION
-                o.emission = UNITY_ACCESS_INSTANCED_PROP(Props, _EmissionColor);
-                o.emission *= max(0, o.color.g - _EmissionThreshold) * _EmissionStrength;
-                #if defined(_VERTEX_BLOOMTYPE_PP)
-                CUSTOM_BLOOM_PP_APPLY(o.emission, _EmissionBloomIntensity);
-                #elif defined(_VERTEX_BLOOMTYPE_FRAG)
-                CUSTOM_BLOOM_FRAG_APPLY(o.emission, _EmissionBloomIntensity);
-                #else
-                CUSTOM_BLOOM_NONE_APPLY(o.emission);
-                #endif
-                #if !defined(_VERTEX_SPECIAL)
-                o.emission *= o.color.a;
-                #endif
-                #endif
+                    o.color = i.color;
+                    // TODO: wtf does this do
+                    #if USE_VERTEX_EMISSION
+                        o.emission = UNITY_ACCESS_INSTANCED_PROP(Props, _EmissionColor);
+                        o.emission *= max(0, o.color.g - _EmissionThreshold) * _EmissionStrength;
+                        #if defined(_VERTEX_BLOOMTYPE_PP)
+                            CUSTOM_BLOOM_PP_APPLY(o.emission, _EmissionBloomIntensity);
+                        #elif defined(_VERTEX_BLOOMTYPE_FRAG)
+                            CUSTOM_BLOOM_FRAG_APPLY(o.emission, _EmissionBloomIntensity);
+                        #else
+                            CUSTOM_BLOOM_NONE_APPLY(o.emission);
+                        #endif
+                        #if !defined(_VERTEX_SPECIAL)
+                            o.emission *= o.color.a;
+                        #endif
+                    #endif
                 #endif
 
                 o.uv.xy = i.uv1.xy;
                 #if USE_SECONDARY_UV
-                o.uv.zw = i.uv2.xy;
-                #if USE_UV_SCALE
-                o.uv.zw *= _UVScale.xy;
-                #endif
-                #if defined(_SECONDARY_UVS_ADDITIVE_OFFSET)
-                o.uv.zw += _AdditiveUVOffset.xy;
-                #endif
-                o.uv.zw *= _InputUvMultiplier.xy;
+                    o.uv.zw = i.uv2.xy;
+                    #if USE_UV_SCALE
+                        o.uv.zw *= _UVScale.xy;
+                    #endif
+                    #if defined(_SECONDARY_UVS_ADDITIVE_OFFSET)
+                        o.uv.zw += _AdditiveUVOffset.xy;
+                    #endif
+                    o.uv.zw *= _InputUvMultiplier.xy;
                 #endif
 
                 #if USE_WORLD_NORMAL
@@ -522,24 +523,32 @@
                 #endif
 
                 float4 baseColor = UNITY_ACCESS_INSTANCED_PROP(Props, _Color);
+                //float4 baseColor = float4(0, 0, 0, 1);
                 #if defined(_VERTEX_COLOR)
                 baseColor *= i.color;
+                
                 #endif
 
                 float4 albedo = baseColor;
+                float emissionAlpha = abs(UNITY_ACCESS_INSTANCED_PROP(Props, _EmissionColor).a);
+                #if !USE_VERTEX_COLOR
+                    albedo *= emissionAlpha;
+                #endif
                 #if defined(DIFFUSE_TEXTURE)
                 #if defined(METAL_SMOOTHNESS_TEXTURE) && defined(_DIFFUSE_TEXTURE_SOURCE_MPM_R)
-                albedo.rgb = tex2D(_MetalSmoothnessTex, TRANSFORM_TEX(i.uv, _MetalSmoothnessTex)).r;
+                albedo.rgb *= tex2D(_MetalSmoothnessTex, TRANSFORM_TEX(i.uv, _MetalSmoothnessTex)).r;
                 #elif defined(METAL_SMOOTHNESS_TEXTURE) && defined(_DIFFUSE_TEXTURE_SOURCE_MPM_A_SMOOTHNESS)
-                albedo.rgb = tex2D(_MetalSmoothnessTex, TRANSFORM_TEX(i.uv, _MetalSmoothnessTex)).a * _Smoothness;
+                albedo.rgb *= tex2D(_MetalSmoothnessTex, TRANSFORM_TEX(i.uv, _MetalSmoothnessTex)).a * _Smoothness;
                 #else
-                albedo.rgb = tex2D(_DiffuseTex, TRANSFORM_TEX(i.uv, _DiffuseTex));
+                albedo.rgb *= tex2D(_DiffuseTex, TRANSFORM_TEX(i.uv, _DiffuseTex));
                 #endif
                 albedo.rgb *= _AlbedoMultiplier;
                 #endif
 
                 #if USE_VERTEX_EMISSION
+                albedo.rgba = 0;
                 albedo += i.emission;
+                albedo *= lerp(baseColor, albedo, emissionAlpha);
                 #endif
 
                 float3 worldPos = i.worldPos;
@@ -553,25 +562,25 @@
 
                 // LIGHTING
                 #if defined(DIFFUSE) || defined(SPECULAR)
-                float3 calculated = 0;
-                #if defined(_VERTEX_SPECIAL) || defined(_VERTEX_METAL_SMOOTHNESS)
-                float metallic = i.color.r;
-                float smoothness = i.color.a;
-                #else
-                float metallic = _Metallic;
-                float smoothness = _Smoothness;
-                #endif
+                    float3 calculated = 0;
+                    #if defined(_VERTEX_SPECIAL) || defined(_VERTEX_METAL_SMOOTHNESS)
+                        float metallic = i.color.r;
+                        float smoothness = i.color.a;
+                    #else
+                        float metallic = _Metallic;
+                        float smoothness = _Smoothness;
+                    #endif
                 #if defined(METAL_SMOOTHNESS_TEXTURE)
-                #if defined(_METALLIC_TEXTURE_SOURCE_MPM_R)
-                metallic = tex2D(_MetalSmoothnessTex, TRANSFORM_TEX(i.uv, _MetalSmoothnessTex)).r;
-                #elif defined(_METALLIC_TEXTURE_SOURCE_MPM_A)
-                metallic = tex2D(_MetalSmoothnessTex, TRANSFORM_TEX(i.uv, _MetalSmoothnessTex)).a;
-                #endif
-                #if defined(_SMOOTHNESS_TEXTURE_SOURCE_MPM_A)
-                smoothness = tex2D(_MetalSmoothnessTex, TRANSFORM_TEX(i.uv, _MetalSmoothnessTex)).a;
-                #elif defined(_SMOOTHNESS_TEXTURE_SOURCE_MPM_G_ROUGHNESS)
-                smoothness = tex2D(_MetalSmoothnessTex, TRANSFORM_TEX(i.uv, _MetalSmoothnessTex)).g;
-                #endif
+                    #if defined(_METALLIC_TEXTURE_SOURCE_MPM_R)
+                        metallic = tex2D(_MetalSmoothnessTex, TRANSFORM_TEX(i.uv, _MetalSmoothnessTex)).r;
+                    #elif defined(_METALLIC_TEXTURE_SOURCE_MPM_A)
+                        metallic = tex2D(_MetalSmoothnessTex, TRANSFORM_TEX(i.uv, _MetalSmoothnessTex)).a;
+                    #endif
+                    #if defined(_SMOOTHNESS_TEXTURE_SOURCE_MPM_A)
+                        smoothness = tex2D(_MetalSmoothnessTex, TRANSFORM_TEX(i.uv, _MetalSmoothnessTex)).a;
+                    #elif defined(_SMOOTHNESS_TEXTURE_SOURCE_MPM_G_ROUGHNESS)
+                        smoothness = tex2D(_MetalSmoothnessTex, TRANSFORM_TEX(i.uv, _MetalSmoothnessTex)).g;
+                    #endif
                 #endif
 
                 #if defined(DIFFUSE) && defined(BOTH_SIDES_DIFFUSE)
@@ -586,10 +595,16 @@
                 #endif
                 CUSTOM_LIGHTING_APPLY(calculated, albedo, metallic, smoothness, specIntensity,
                                       diffuseBothSides, worldPos, worldNormal);
-                albedo = max(_NominalDiffuseLevel * albedo, _AmbientMinimalValue) * _AmbientMultiplier + float4(
-                    calculated.rgb, 0);
+                albedo.rgb += calculated;
+                float3 selfIllum = albedo.rgb; albedo.rgb = (selfIllum + calculated.rgb);
+                //albedo *= max(_NominalDiffuseLevel * albedo, _AmbientMinimalValue) * _AmbientMultiplier + float4(calculated.rgb, 0);
+                //albedo.rgb *= max(albedo.rgb, _AmbientMinimalValue) * _AmbientMultiplier + float4(calculated.rgb, 0);
+                //albedo.a *= _NominalDiffuseLevel.a;
+                
                 #else
-                albedo = max(_NominalDiffuseLevel * albedo, _AmbientMinimalValue) * _AmbientMultiplier;
+                //albedo.rgb += calculated.rgb;
+                //albedo = max(_NominalDiffuseLevel * albedo, _AmbientMinimalValue) * _AmbientMultiplier;
+                albedo.rgb = albedo.rgb;
                 #endif
 
                 // EMISSION
@@ -610,9 +625,7 @@
                                      _FlipbookRows);
                 #endif
                 #if defined(_EMISSIONTEXTURE_SIMPLE)
-                float4 emissionTex = tex2D(_EmissionTex,
-                                           TRANSFORM_TEX(emissionUv, _EmissionTex) +
-                                           _EmissionTexSpeed * time.yy);
+                float4 emissionTex = tex2D(_EmissionTex,TRANSFORM_TEX(emissionUv, _EmissionTex) +_EmissionTexSpeed * time.yy).g;
                 #else
                 float4 emissionTex = tex2D(_EmissionTex, TRANSFORM_TEX(emissionUv, _EmissionTex));
                 #endif
@@ -632,29 +645,27 @@
                                             0);
                 #endif
 
+                
+
                 #if defined(_EMISSION_ALPHA_SOURCE_COPY_EMISSION)
-                emissionTex.a = emissionTex.a;
+                emissionTex.a = emissionTex.g;
                 #elif defined(METAL_SMOOTHNESS_TEXTURE) && defined(_EMISSION_ALPHA_SOURCE_MPM_R)
                 emissionTex.a = tex2D(_MetalSmoothnessTex, TRANSFORM_TEX(i.uv, _MetalSmoothnessTex)).r;
                 #else
                 emissionTex.a = emissionTex.g;
                 #endif
 
+                
+
                 #if USE_EMISSION_MASK
 
                 #if defined(EMISSION_MASK)
                 #if defined(SECONDARY_UVS_EMISSION_MASK)
-                float4 emissionMask = tex2D(_EmissionMask,
-                                            TRANSFORM_TEX(uv2, _EmissionMask) +
-                                            _EmissionMaskSpeed * time.yy);
+                float4 emissionMask = tex2D(_EmissionMask, TRANSFORM_TEX(uv2, _EmissionMask) + _EmissionMaskSpeed * time.yy);
                 #else
-                float4 emissionMask = tex2D(_EmissionMask,
-                                            TRANSFORM_TEX(i.uv, _EmissionMask) +
-                                            _EmissionMaskSpeed *
-                                            time
-                                            .yy);
+                float4 emissionMask = tex2D(_EmissionMask, TRANSFORM_TEX(i.uv, _EmissionMask) + _EmissionMaskSpeed * time.yy);
                 #endif
-                emissionMask *= UNITY_ACCESS_INSTANCED_PROP(Props, _EmissionMaskIntensity);
+                
 
                 // TODO: ok what are the difference between the 2
                 #if defined(_MASKBLEND_ADD)
@@ -662,7 +673,7 @@
                 #elif defined(_MASKBLEND_MASKED_ADD)
                 emissionTex += emissionTex * emissionMask;
                 #else
-                emissionTex *= emissionMask;
+                emissionTex = lerp(emissionTex, emissionTex * emissionMask, UNITY_ACCESS_INSTANCED_PROP(Props, _EmissionMaskIntensity));
                 #endif
                 #endif
 
@@ -679,30 +690,34 @@
                                              _SecondaryEmissionMaskSpeed *
                                              time.yy);
                 #endif
-                emissionMask2 *= UNITY_ACCESS_INSTANCED_PROP(Props, _SecondaryEmissionMaskIntensity);
+                
 
                 #if defined(_SECONDARY_MASKBLEND_ADD)
                 emissionTex += emissionMask2;
                 #elif defined(_SECONDARY_MASKBLEND_MASKED_ADD)
                 emissionTex += emissionTex * emissionMask2;
                 #else
-                emissionTex *= emissionMask2;
+                emissionTex = lerp(emissionTex, emissionTex * emissionMask2, UNITY_ACCESS_INSTANCED_PROP(Props, _SecondaryEmissionMaskIntensity));
                 #endif
                 #endif
 
                 #endif
-
+                //BLOOM TYPES
+                #if defined(_EMISSIONBLOOMTYPE_PP)
+                CUSTOM_BLOOM_PP_APPLY(emissionTex, _EmissionTexBloomIntensity);
+                #elif defined(_EMISSIONBLOOMTYPE_FRAG)
+                CUSTOM_BLOOM_FRAG_APPLY(emissionTex, _EmissionTexWhiteBoostMultiplier);
+                #else
+                CUSTOM_BLOOM_NONE_APPLY(emissionTex);
+                #endif
+                
+                
+                
                 float4 finalEmission = emissionTex * UNITY_ACCESS_INSTANCED_PROP(Props, _EmissionTexColor) *
-                    UNITY_ACCESS_INSTANCED_PROP(Props, _EmissionBrightness);
+                    saturate(UNITY_ACCESS_INSTANCED_PROP(Props, _EmissionTexColor).a);
                 albedo += finalEmission;
 
-                #if defined(_EMISSIONBLOOMTYPE_PP)
-                CUSTOM_BLOOM_PP_APPLY(albedo, _EmissionTexBloomIntensity);
-                #elif defined(_EMISSIONBLOOMTYPE_FRAG)
-                CUSTOM_BLOOM_FRAG_APPLY(albedo, _EmissionTexWhiteBoostMultiplier);
-                #else
-                CUSTOM_BLOOM_NONE_APPLY(albedo);
-                #endif
+                
 
                 #elif USE_EMISSION_GRADIENT_TEXTURE
                 float4 finalEmission = tex2D(_EmissionGradientTex,
@@ -715,6 +730,8 @@
                 albedo += finalEmission;
 
                 #endif
+                
+                
 
                 #if defined(RIM_DIM)
                 float rim = 1 - saturate(dot(worldNormal, normalize(_WorldSpaceCameraPos - worldPos)));
@@ -745,10 +762,12 @@
 
                 #if defined(DISTANCE_DARKENING)
                 float darkeningOffset = worldPos - _DarkeningCenter;
-                float dist = max(0, dot(darkeningOffset, normalize(_DarkeningDirection)));
+                //float dist = max(0, dot(darkeningOffset, normalize(_DarkeningDirection)));
+                float dist = length(darkeningOffset);
                 float darkeningFactor = saturate(dist * _DarkeningScale) * _DarkeningIntensity;
                 albedo.rgb = lerp(albedo.rgb, 0, darkeningFactor);
                 #endif
+
 
                 return albedo;
             }

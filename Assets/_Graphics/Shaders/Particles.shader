@@ -464,7 +464,7 @@
                 i.vertex.xyz = float3(i.vertex.x * c - i.vertex.z * s, i.vertex.y, i.vertex.x * s + i.vertex.z * c);
                 float3 normal = float3(i.normal.x * c - i.normal.z * s, i.normal.y, i.normal.x * s + i.normal.z * c);
                 #elif defined(_CURVE_VERTICES_AROUND_Z)
-                angle = i.vertex.x;
+                angle = -i.vertex.y;
                 sincos(angle, s, c);
                 i.vertex.xyz = float3(i.vertex.x * c - i.vertex.y * s, i.vertex.x * s + i.vertex.y * c, i.vertex.z);
                 float3 normal = float3(i.normal.x * c - i.normal.y * s, i.normal.x * s + i.normal.y * c, i.normal.z);
@@ -503,7 +503,7 @@
             {
                 UNITY_SETUP_INSTANCE_ID(i);
 
-                float4 time = GET_TIME(UNITY_ACCESS_INSTANCED_PROP(Props, _TimeOffset));
+                float4 time = GET_TIME(UNITY_ACCESS_INSTANCED_PROP(Props, _TimeOffset))/2;
 
                 #if defined(_SECONDARY_UVS_IMPORT)
                 // TODO: secondary uv stuff
@@ -515,7 +515,7 @@
                 #if defined(VERTEX_COLOR)
                 float4 color = i.color;
                 #else
-                float4 color = UNITY_ACCESS_INSTANCED_PROP(Props, _Color);
+                float4 color = UNITY_ACCESS_INSTANCED_PROP(Props, _Color) * _RendererColor;
                 #endif
 
                 #if !defined(TEXTURE_FLIPBOOK) && defined(TEXTURE_COLOR)
@@ -540,16 +540,18 @@
                 // TODO: honestly, how does this work
                 #if defined(CUSTOM_WRAPPING)
                 #endif
-                #if !defined(TEXTURE_COLOR) && defined(_ALPHACHANNEL_RED)
-                albedo.a *= tex2D(_MainTex, TRANSFORM_TEX(uv, _MainTex) + _UvPanning * time.yy).r * _BaseLayer;
+                #if !defined(TEXTURE_COLOR)
+                #if defined(_ALPHACHANNEL_RED)
+                    albedo.a *= tex2D(_MainTex, TRANSFORM_TEX(uv, _MainTex) + _UvPanning * time.yy).r * _BaseLayer;
                 #else
-                albedo *= tex2D(_MainTex, TRANSFORM_TEX(uv, _MainTex) + _UvPanning * time.yy) * _BaseLayer;
+                    albedo *= tex2D(_MainTex, TRANSFORM_TEX(uv, _MainTex) + _UvPanning * time.yy).a * _BaseLayer;
+                #endif
                 #endif
                 #endif
                 albedo.rgb *= _Intensity;
 
                 #if defined(SECONDARY_COLOR)
-                albedo += tex2D(_SecondaryColorTex,
+                albedo.rgb *= tex2D(_SecondaryColorTex,
                                 TRANSFORM_TEX(i.uv, _SecondaryColorTex) + _SecondaryColorPanning * time.yy);
                 #endif
 

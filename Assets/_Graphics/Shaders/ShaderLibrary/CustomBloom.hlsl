@@ -5,18 +5,25 @@
     color.rgb *= abs(color.a); \
     color.a = 0
 
+
 #define CUSTOM_BLOOM_NONE_APPLY(color) \
+    color.rgb *= color.a;\
     color.a = 0
 
 #define CUSTOM_BLOOM_PP_APPLY(color, multiplier) \
-    color.a = abs(color.a); \
-    color.rgb *= color.a; \
-    color.a = saturate(color.a)
+    float3 _baseLum = color.rgb;\
+    float _baseAlpha = color.a;\
+    color.a *= multiplier;\
+    color.rgb *= color.a;\
+    color.a = saturate(pow(color.a, 2));\
+    color.a *= _baseLum;\
+    color.a *= saturate(pow(_baseAlpha, 2));
+    
 
 #define CUSTOM_BLOOM_FRAG_APPLY(color, multiplier) \
     color.a = abs(color.a); \
-    color.rgb += color.a * color.a * multiplier; \
-    color.rgb *= color.a; \
-    color.a = 0
+    color.rgb += pow(color.a,2); \
+    color.rgb *= color.a;\
+    color.a *= color.rgb * multiplier
 
 #endif
