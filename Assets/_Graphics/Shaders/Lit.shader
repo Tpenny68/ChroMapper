@@ -202,6 +202,7 @@
             #pragma shader_feature_local_vertex DISPLACEMENT_SPATIAL
             #pragma shader_feature_local_vertex DISPLACEMENT_BIDIRECTIONAL
             #pragma shader_feature_local_vertex _ _SPECTROGRAM_FLAT _SPECTROGRAM_FULL
+            #pragma shader_feature_local_vertex MESH_PACKING
 
             #pragma shader_feature_local_fragment _ _EMISSIONTEXTURE_SIMPLE _EMISSIONTEXTURE_FLIPBOOK
             #pragma shader_feature_local_fragment _ _EMISSION_TEXTURE_SOURCE_MPM_G
@@ -435,7 +436,9 @@
                 #if USE_WORLD_NORMAL
                 float3 normal : NORMAL;
                 #endif
+                #if defined(MESH_PACKING)
                 float2 packingUv : TEXCOORD3;
+                #endif
                 UNITY_VERTEX_INPUT_INSTANCE_ID};
 
             struct v2f
@@ -514,12 +517,11 @@
                 o.worldPos.w = distance(o.worldPos.xyz, _WorldSpaceCameraPos);
                 #endif
                 o.screenPos = ComputeScreenPosCustom(o.vertex);
+                #if defined(MESH_PACKING)
                 float meshPackingID = UNITY_ACCESS_INSTANCED_PROP(Props, _MeshPackingId);
                 float packingCull = abs(i.packingUv.y - meshPackingID) > 0.1;
-                #if _meshPackingId == 1
-                    o.vertex.xyz = packingCull ? float3(0.0, 0.0, 0.0) : o.vertex.xyz;
+                o.vertex.xyz = packingCull ? float3(0.0, 0.0, 0.0) : o.vertex.xyz;
                 #endif
-                
 
                 return o;
             }

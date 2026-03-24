@@ -147,6 +147,9 @@
         _FogHeightOffset ("Fog Height Offset", float) = 0
         _FogHeightScale ("Fog Height Scale", float) = 1
 
+        [Toggle(MESH_PACKING)] _MeshPacking ("Use Mesh Packed Instancing", Float) = 0
+        _MeshPackingId ("Mesh Packing ID", float) = 0
+
 
 
         [Header(Settings)] [Space]
@@ -207,6 +210,7 @@
             #pragma shader_feature_local_vertex _ _SPECTROGRAM_FLAT _SPECTROGRAM_FULL
 
             #pragma shader_feature_local_vertex _ _CURVE_VERTICES_AROUND_X _CURVE_VERTICES_AROUND_Y _CURVE_VERTICES_AROUND_Z
+            #pragma shader_feature_local_vertex MESH_PACKING
 
             #pragma shader_feature_local_fragment MAIN_TEXTURE
 
@@ -365,6 +369,7 @@
             UNITY_DEFINE_INSTANCED_PROP(float, _MaskStrength)
             UNITY_DEFINE_INSTANCED_PROP(float, _Mask2Strength)
             UNITY_DEFINE_INSTANCED_PROP(float, _TimeOffset)
+            UNITY_DEFINE_INSTANCED_PROP(float, _MeshPackingId)
             UNITY_INSTANCING_BUFFER_END (Props)
             #define _RendererColor  UNITY_ACCESS_INSTANCED_PROP(Props, unity_SpriteRendererColorArray)
             #define _Flip           UNITY_ACCESS_INSTANCED_PROP(Props, unity_SpriteFlipArray)
@@ -379,6 +384,7 @@
                 float _MaskStrength;
                 float _Mask2Strength;
                 float _TimeOffset;
+                float _MeshPackingId;
                 #endif
                 float _EnableExternalAlpha;
             CBUFFER_END
@@ -396,6 +402,9 @@
                 #endif
                 #if defined(_SPECTROGRAM_FULL)
                 float2 uv3 : TEXCOORD2;
+                #endif
+                #if defined(MESH_PACKING)
+                float2 packingUv : TEXCOORD3;
                 #endif
                 UNITY_VERTEX_INPUT_INSTANCE_ID
             };
@@ -494,6 +503,10 @@
                 #endif
                 #endif
 
+                #endif
+                #if defined(MESH_PACKING)
+                float packingCull = abs(i.packingUv.y - UNITY_ACCESS_INSTANCED_PROP(Props, _MeshPackingId)) > 0.1;
+                o.vertex.xyz = packingCull ? float3(0.0, 0.0, 0.0) : o.vertex.xyz;
                 #endif
 
                 return o;
