@@ -137,7 +137,7 @@
 
 
         [Header(Others)] [Space]
-        [KeywordEnum(Standard, Song Time, Freeze)] _Custom_Time ("Standard", float) = 0
+        [KeywordEnum(Standard, Song Time, Freeze)] _Custom_Time ("Time Behavior", float) = 0
         [KeywordEnum(After Emissive, Before Emissive)] _ACES_Approach ("ACES Approach", float) = 0
         [Toggle(COLOR_ARRAY)] _UseColorArray ("Color Array", float) = 0
 
@@ -160,6 +160,9 @@
         _DarkeningIntensity ("Intensity", float) = 1
         _DarkeningCenter ("Center", Vector) = (0,0,0,0)
         _DarkeningDirection ("Axes", Vector) = (1,1,1,1)
+
+        [Toggle(MESH_PACKING)] _MeshPacking ("Use Mesh Packed Instancing", Float) = 0
+        _MeshPackingId ("Mesh Packing ID", float) = 0
 
 
 
@@ -241,6 +244,8 @@
             #pragma shader_feature_local_fragment FOG
             #pragma shader_feature_local_fragment HEIGHT_FOG
             #pragma shader_feature_local_fragment DISTANCE_DARKENING
+
+            #pragma shader_feature_local_fragment MESH_PACKING
 
             #pragma multi_compile_fragment _ BLOOM_FOG
 
@@ -382,7 +387,7 @@
             float _DarkeningIntensity;
             float3 _DarkeningCenter;
             float3 _DarkeningDirection;
-            // --
+
 
             #if defined(UNITY_INSTANCING_ENABLED)
             UNITY_INSTANCING_BUFFER_START (Props)
@@ -395,6 +400,7 @@
             UNITY_DEFINE_INSTANCED_PROP(float, _SecondaryEmissionMaskIntensity)
             UNITY_DEFINE_INSTANCED_PROP(float4, _PrivatePointLightColor)
             UNITY_DEFINE_INSTANCED_PROP(float, _TimeOffset)
+            UNITY_DEFINE_INSTANCED_PROP(float, _MeshPackingId)
             UNITY_INSTANCING_BUFFER_END (Props)
             #else
             CBUFFER_START(UnityPerMaterial)
@@ -407,6 +413,7 @@
                 float _SecondaryEmissionMaskIntensity;
                 float4 _PrivatePointLightColor;
                 float _TimeOffset;
+                float _MeshPackingId;
             CBUFFER_END
             #endif
 
@@ -428,6 +435,7 @@
                 #if USE_WORLD_NORMAL
                 float3 normal : NORMAL;
                 #endif
+                float2 packingUv : TEXCOORD3;
                 UNITY_VERTEX_INPUT_INSTANCE_ID};
 
             struct v2f
@@ -506,6 +514,10 @@
                 o.worldPos.w = distance(o.worldPos.xyz, _WorldSpaceCameraPos);
                 #endif
                 o.screenPos = ComputeScreenPosCustom(o.vertex);
+                float meshPackingID = UNITY_ACCESS_INSTANCED_PROP(Props, _MeshPackingId);
+                float packingCull = abs(i.packingUv.y - meshPackingID) > 0.1;
+                o.vertex.xyz = packingCull ? float3(0.0, 0.0, 0.0) : o.vertex.xyz;
+                
 
                 return o;
             }
@@ -767,6 +779,11 @@
                 float darkeningFactor = saturate(dist * _DarkeningScale) * _DarkeningIntensity;
                 albedo.rgb = lerp(albedo.rgb, 0, darkeningFactor);
                 #endif
+                //#if defined(UNITY_INSTANCING_ENABLED)
+                //return float4(0, 1, 0, 1); // green = instancing active
+                //#else
+                //return float4(1, 0, 0, 1); // red = falling back to CBUFFER
+                //#endif
 
 
                 return albedo;

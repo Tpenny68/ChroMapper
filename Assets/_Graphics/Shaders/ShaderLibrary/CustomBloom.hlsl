@@ -24,6 +24,6 @@
     color.a = abs(color.a); \
     color.rgb += pow(color.a,2); \
     color.rgb *= color.a;\
-    color.a *= color.rgb * multiplier
+    color.a *= 0
 
 #endif
