@@ -516,7 +516,9 @@
                 o.screenPos = ComputeScreenPosCustom(o.vertex);
                 float meshPackingID = UNITY_ACCESS_INSTANCED_PROP(Props, _MeshPackingId);
                 float packingCull = abs(i.packingUv.y - meshPackingID) > 0.1;
-                o.vertex.xyz = packingCull ? float3(0.0, 0.0, 0.0) : o.vertex.xyz;
+                #if _meshPackingId == 1
+                    o.vertex.xyz = packingCull ? float3(0.0, 0.0, 0.0) : o.vertex.xyz;
+                #endif
                 
 
                 return o;
