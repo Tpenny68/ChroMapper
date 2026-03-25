@@ -196,7 +196,7 @@
 
             #pragma shader_feature_local_fragment SPECTROGRAM_COLOR
 
-            #pragma shader_feature_local COLOR_ARRAY
+            #pragma shader_feature_local_fragment COLOR_ARRAY
 
             #pragma shader_feature_local _ _SECONDARY_UVS_IMPORT
 
@@ -353,9 +353,6 @@
             #define USE_BILLBOARD defined(_BILLBOARD_FULL) || defined(_BILLBOARD_Y_AXIS) || defined(_BILLBOARD_CAMERA_FACING)
             // USE_BILLBOARD
             float _BillboardScale;
-            
-            // COLOR_ARRAY
-            float4 _ColorsArray[150]; // size depends on your use case
             // --
 
             float _FogStartOffset;
@@ -430,9 +427,6 @@
                 #endif
                 float3 worldPos : TEXCOORD1;
                 float4 screenPos : TEXCOORD2;
-                #if defined(COLOR_ARRAY)
-                float2 colorIndex : TEXCOORD3;  // ADD
-                #endif
                 UNITY_VERTEX_INPUT_INSTANCE_ID
                 UNITY_VERTEX_OUTPUT_STEREO
             };
@@ -519,9 +513,6 @@
                 float packingCull = abs(i.packingUv.y - UNITY_ACCESS_INSTANCED_PROP(Props, _MeshPackingId)) > 0.1;
                 o.vertex.xyz = packingCull ? float3(0.0, 0.0, 0.0) : o.vertex.xyz;
                 #endif
-                #if defined(COLOR_ARRAY)
-                o.colorIndex = i.colorIndexUv;
-                #endif
 
                 return o;
             }
@@ -543,10 +534,6 @@
                 float4 color = i.color;
                 #else
                 float4 color = UNITY_ACCESS_INSTANCED_PROP(Props, _Color) * _RendererColor;
-                #endif
-                #if defined(COLOR_ARRAY)
-                float colorIdx = round(i.colorIndex.x * 10.0 + i.colorIndex.y);
-                color = _ColorsArray[colorIdx];
                 #endif
 
                 #if !defined(TEXTURE_FLIPBOOK) && defined(TEXTURE_COLOR)

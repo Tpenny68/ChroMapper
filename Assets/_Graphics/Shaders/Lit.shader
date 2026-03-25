@@ -161,7 +161,7 @@
         _DarkeningCenter ("Center", Vector) = (0,0,0,0)
         _DarkeningDirection ("Axes", Vector) = (1,1,1,1)
 
-        [Toggle(MESH_PACKING)] _MeshPacking ("Use Mesh Packed Instancing", Float) = 0
+        [Toggle(MESH_PACKING)] _MeshPacking ("Mesh Packed Instancing", Float) = 0
         _MeshPackingId ("Mesh Packing ID", float) = 0
 
 
