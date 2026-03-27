@@ -3,6 +3,8 @@
     Properties
     {
         _Color ("Color", Color) = (1, 1, 1, 1)
+        _BaseColorBoost ("Base Color Boost", Float) = 1.0
+        _BaseColorBoostThreshold ("Base Color Boost Threshold", Float) = 0.1
 
         [KeywordEnum(None, Import, External Scale, Object Space, Additive Offset)] _Secondary_UVs ("Secondary UVs", float) = 0
         _UVScale ("UV Scale", Vector) = (1,1,1,1)
@@ -117,6 +119,28 @@
 
 
 
+        [Header(Parallax)] [Space]
+        [EnumHeader(None, Flexible, RGB)] _Parallax ("Parallax Emission", Float) = 0
+        [Toggle(_PARALLAX_FLEXIBLE_REFLECTED)] _EnableReflectedDir ("Reflected Direction", Float) = 0
+        [KeywordEnum(Planar, Warped)] _Parallax_Projection ("Parallax Projection", Float) = 0
+        _ParallaxColor ("Parallax Color", Color) = (1, 1, 1, 1)
+        _ParallaxMap ("Parallax Map", 2D) = "black" {}
+        [Toggle(SECONDARY_UVS_PARALLAX)] _SecondaryUVsParallax ("Parallax Texture Secondary UVs", Float) = 0
+        _ParallaxTexSpeed ("Parallax Speed", Vector) = (0, 0, 0, 0)
+        _ParallaxIntensity ("Parallax Intensity", Float) = 1
+        _ParallaxIntensity_Step ("Parallax Intensity Step", Float) = -0.25
+        _Layers ("Layers", Range(2, 6)) = 3
+        _StartOffset ("Start Offset", Float) = 1
+        _OffsetStep ("Offset Step", Float) = 1
+        [Toggle(PARALLAX_IRIDESCENCE)] _Parallax_Iridescence ("Iridescence", Float) = 0
+        _IridescenceAxesMultiplier ("Axes Multiplier", Vector) = (1, 2, 3, 0)
+        _IridescenceTiling ("Iridescence Tiling", Float) = 0.25
+        _IridescenceColorInfluence ("Color Influence", Range(0, 1)) = 0
+        [KeywordEnum(None, Texture, Vertex Color)] _Parallax_Masking ("Mask by", Float) = 0
+        _ParallaxMaskingMap ("Parallax Mask", 2D) = "white" {}
+        _ParallaxMaskSpeed ("Mask Speed", Vector) = (0, 0, 0, 0)
+        _ParallaxMaskIntensity ("Mask Intensity", Range(0, 1)) = 1
+
         [Header(Reflection)] [Space]
         [Toggle(RIM_DIM)] _EnableRimDim ("Rim Dim", float) = 0
         [Toggle(INVERT_RIM_DIM)] _InvertRimDim ("Invert", float) = 0
@@ -170,6 +194,20 @@
         [Enum(UnityEngine.Rendering.CullMode)] _CullMode ("Cull Mode", float) = 2
         [Enum(UnityEngine.Rendering.CompareFunction)] _ZTest ("Z Test", float) = 4
         [Toggle] _ZWrite ("Z Write", float) = 1
+
+        [Header(Blending)] [Space]
+        [Enum(UnityEngine.Rendering.BlendMode)] _BlendSrcFactor ("Foreground Factor", Float) = 1
+        [Enum(UnityEngine.Rendering.BlendMode)] _BlendDstFactor ("Background Factor", Float) = 0
+        [Header(Bloom Blending)] [Space]
+        [Enum(UnityEngine.Rendering.BlendMode)] _BlendSrcFactorA ("Foreground Factor", Float) = 0
+        [Enum(UnityEngine.Rendering.BlendMode)] _BlendDstFactorA ("Background Factor", Float) = 0
+
+        [Header(Stencil)] [Space]
+        _StencilRefValue ("Stencil Ref Value", Float) = 0
+        [Enum(UnityEngine.Rendering.CompareFunction)] _StencilComp ("Stencil Comp Func", Float) = 8
+        [Enum(UnityEngine.Rendering.StencilOp)] _StencilPass ("Stencil Pass Op", Float) = 0
+        _BaseColorBoost ("Base Color Boost", float) = 1
+        _BaseColorBoostThreshold ("Base Color Boost Threshold", float) = 0
     }
     SubShader
     {
@@ -178,9 +216,17 @@
             "RenderType"="Opaque"
         }
 
+        Blend [_BlendSrcFactor] [_BlendDstFactor], [_BlendSrcFactorA] [_BlendDstFactorA]
         Cull [_CullMode]
         ZTest [_ZTest]
         ZWrite [_ZWrite]
+
+        Stencil
+        {
+            Ref [_StencilRefValue]
+            Comp [_StencilComp]
+            Pass [_StencilPass]
+        }
 
         Pass
         {
@@ -236,11 +282,18 @@
             #pragma shader_feature_local RIM_DIM
             #pragma shader_feature_local_fragment INVERT_RIM_DIM
 
+            #pragma shader_feature_local_fragment _ _PARALLAX_FLEXIBLE _PARALLAX_RGB
+            #pragma shader_feature_local_fragment _PARALLAX_FLEXIBLE_REFLECTED
+            #pragma shader_feature_local_fragment _ _PARALLAX_PROJECTION_WARPED
+            #pragma shader_feature_local_fragment PARALLAX_IRIDESCENCE
+            #pragma shader_feature_local_fragment SECONDARY_UVS_PARALLAX
+            #pragma shader_feature_local_fragment _ _PARALLAX_MASKING_TEXTURE _PARALLAX_MASKING_VERTEX_COLOR
+
             #pragma shader_feature_local_fragment GROUND_FADE
 
             #pragma shader_feature_local_fragment _ _CUSTOM_TIME_SONG_TIME _CUSTOM_TIME_FREEZE
             #pragma shader_feature_local_fragment _ _ACES_APPROACH_BEFORE_EMISSIVE
-            #pragma shader_feature_local_fragment COLOR_ARRAY
+            #pragma shader_feature_local COLOR_ARRAY
 
             #pragma shader_feature_local_fragment FOG
             #pragma shader_feature_local_fragment HEIGHT_FOG
@@ -364,6 +417,27 @@
             float _RimDarkening;
             // --
 
+            // PARALLAX_IRIDESCENCE
+            sampler2D _ParallaxMap;
+            float4 _ParallaxMap_ST;
+            float2 _ParallaxTexSpeed;
+            float4 _ParallaxColor;
+            float _ParallaxIntensity;
+            float _ParallaxIntensity_Step;
+            float _StartOffset;
+            float _OffsetStep;
+            float _Layers;
+            float _IridescenceTiling;
+            float3 _IridescenceAxesMultiplier;
+            float _IridescenceColorInfluence;
+            // _PARALLAX_MASKING_TEXTURE
+            sampler2D _ParallaxMaskingMap;
+            float4 _ParallaxMaskingMap_ST;
+            float2 _ParallaxMaskSpeed;
+            float _ParallaxMaskIntensity;
+            // --
+            // --
+
             // GROUND_FADE
             float _GroundFadeScale;
             float _GroundFadeOffset;
@@ -388,6 +462,13 @@
             float _DarkeningIntensity;
             float3 _DarkeningCenter;
             float3 _DarkeningDirection;
+
+            #if defined(COLOR_ARRAY)
+            float4 _ColorsArray[150];
+            float _ColorsArrayOffset;
+            float _Intensity;
+            float _AlphaMultiplier;
+            #endif
 
 
             #if defined(UNITY_INSTANCING_ENABLED)
@@ -418,7 +499,7 @@
             CBUFFER_END
             #endif
 
-            #define USE_WORLD_NORMAL defined(DIFFUSE) || defined(SPECULAR) || defined(RIM_DIM)
+            #define USE_WORLD_NORMAL defined(DIFFUSE) || defined(SPECULAR) || defined(RIM_DIM) || defined(PARALLAX_IRIDESCENCE)
 
             struct appdata
             {
@@ -438,6 +519,9 @@
                 #endif
                 #if defined(MESH_PACKING)
                 float2 packingUv : TEXCOORD3;
+                #endif
+                #if defined(COLOR_ARRAY)
+                float2 colorArrayId : TEXCOORD4;
                 #endif
                 UNITY_VERTEX_INPUT_INSTANCE_ID};
 
@@ -463,6 +547,9 @@
                 float4 screenPos : TEXCOORD2;
                 #if USE_WORLD_NORMAL
                 float3 worldNormal : TEXCOORD3;
+                #endif
+                #if defined(COLOR_ARRAY)
+                float2 colorArrayId : TEXCOORD4;
                 #endif
                 UNITY_VERTEX_INPUT_INSTANCE_ID};
 
@@ -504,6 +591,7 @@
                     #endif
                     o.uv.zw *= _InputUvMultiplier.xy;
                 #endif
+                
 
                 #if USE_WORLD_NORMAL
                 #if defined(PRECISE_NORMAL)
@@ -522,6 +610,11 @@
                 float packingCull = abs(i.packingUv.y - meshPackingID) > 0.1;
                 o.vertex.xyz = packingCull ? float3(0.0, 0.0, 0.0) : o.vertex.xyz;
                 #endif
+                #if defined(COLOR_ARRAY)
+                o.colorArrayId.x = i.colorArrayId.x;
+                o.colorArrayId.y = i.colorArrayId.y + _ColorsArrayOffset;
+                #endif
+                
 
                 return o;
             }
@@ -539,6 +632,12 @@
                 #endif
 
                 float4 baseColor = UNITY_ACCESS_INSTANCED_PROP(Props, _Color);
+                #if defined(COLOR_ARRAY)
+                float colorIndex = round(i.colorArrayId.x * 10.0 + i.colorArrayId.y);
+                float4 arrayColor = _ColorsArray[colorIndex];
+                baseColor.rgb = arrayColor.rgb * _Intensity;
+                baseColor.a   = arrayColor.a * _AlphaMultiplier;
+                #endif
                 //float4 baseColor = float4(0, 0, 0, 1);
                 #if defined(_VERTEX_COLOR)
                 baseColor *= i.color;
@@ -626,6 +725,82 @@
                 // EMISSION
                 #if defined(_ACES_APPROACH_BEFORE_EMISSIVE)
                 ACES_TONE_MAPPING_APPLY(albedo);
+                #endif
+
+                // PARALLAX IRIDESCENCE
+                #if defined(_PARALLAX_FLEXIBLE) || defined(_PARALLAX_RGB)
+                {
+                    float2 baseUv = i.uv.xy * _InputUvMultiplier;
+                    float4 timeVal = GET_TIME(UNITY_ACCESS_INSTANCED_PROP(Props, _TimeOffset));
+
+                    // Camera-to-surface direction
+                    float3 dirToCam = normalize(i.worldPos.xyz - _WorldSpaceCameraPos);
+
+                    #if defined(_PARALLAX_FLEXIBLE_REFLECTED)
+                    // Use reflected direction for iridescence
+                    float3 iridDir = dirToCam - 2.0 * dot(dirToCam, worldNormal) * worldNormal;
+                    #else
+                    float3 iridDir = dirToCam;
+                    #endif
+
+                    // Iridescence hue from direction dot axes
+                    #if defined(PARALLAX_IRIDESCENCE)
+                    float iridDot = dot(iridDir, _IridescenceAxesMultiplier);
+                    iridDot = frac(iridDot * _IridescenceTiling);
+                    float3 hueShift = iridDot.xxx * 6.0 + float3(0.0, 4.0, 2.0);
+                    hueShift = hueShift * (1.0 / 6.0);
+                    hueShift = frac(hueShift);
+                    hueShift = hueShift * 6.0 - 3.0;
+                    hueShift = saturate(abs(hueShift) - 1.0);
+                    float3 hueShiftSq = hueShift * hueShift;
+                    hueShift = (-hueShift * 2.0 + 3.0) * hueShiftSq;
+                    #else
+                    float3 hueShift = float3(1.0, 1.0, 1.0);
+                    #endif
+
+                    // Parallax UV
+                    #if defined(SECONDARY_UVS_PARALLAX) && USE_SECONDARY_UV
+                    float2 parallaxUv = i.uv.zw * _ParallaxMap_ST.xy + _ParallaxMap_ST.zw;
+                    #else
+                    float2 parallaxUv = baseUv * _ParallaxMap_ST.xy + _ParallaxMap_ST.zw;
+                    #endif
+                    parallaxUv += timeVal.x * _ParallaxTexSpeed * _ParallaxMap_ST.xy;
+
+                    // Parallax layer accumulation
+                    float3 layerColor = float3(0.0, 0.0, 0.0);
+                    for (float layer = 0.0; layer < _Layers; layer += 1.0)
+                    {
+                        float lf = floor(layer);
+                        float offset = _OffsetStep * lf + _StartOffset;
+                        float2 sampleUv = offset.xx * dirToCam.xy + parallaxUv;
+                        float4 parallaxSample = tex2D(_ParallaxMap, sampleUv);
+
+                        // Cycle iridescence color per layer
+                        float3 layerIrid;
+                        if      (lf <= 0.1) layerIrid = hueShift.xyz;
+                        else if (lf <= 1.1) layerIrid = hueShift.zxy;
+                        else if (lf <= 2.1) layerIrid = hueShift.yzx;
+                        else if (lf <= 3.1) layerIrid = hueShift.xzy;
+                        else                layerIrid = hueShift.yzx;
+
+                        float intensity = (_ParallaxIntensity_Step * lf + _ParallaxIntensity) * parallaxSample.x;
+                        layerColor += intensity * layerIrid;
+                    }
+
+                    // Masking
+                    #if defined(_PARALLAX_MASKING_VERTEX_COLOR)
+                    layerColor *= i.color.g;
+                    #elif defined(_PARALLAX_MASKING_TEXTURE)
+                    float4 maskSample = tex2D(_ParallaxMaskingMap,
+                        TRANSFORM_TEX(baseUv, _ParallaxMaskingMap) + _ParallaxMaskSpeed * timeVal.y);
+                    layerColor = lerp(layerColor, layerColor * maskSample.r, _ParallaxMaskIntensity);
+                    #endif
+
+                    // Blend toward grayscale via IridescenceColorInfluence, then tint and add
+                    float grayLayer = (layerColor.r + layerColor.g + layerColor.b) * 0.5;
+                    float3 blended = _IridescenceColorInfluence.xxx * (grayLayer.xxx * _ParallaxColor.xyz - layerColor) + layerColor;
+                    albedo.rgb += blended * _ParallaxColor.a;
+                }
                 #endif
 
                 #if USE_EMISSION_TEXTURE_COLOR

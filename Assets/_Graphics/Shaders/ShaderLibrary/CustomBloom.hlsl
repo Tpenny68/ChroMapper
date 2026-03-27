@@ -11,13 +11,8 @@
     color.a = 0
 
 #define CUSTOM_BLOOM_PP_APPLY(color, multiplier) \
-    float3 _baseLum = color.rgb;\
-    float _baseAlpha = color.a;\
-    color.a *= multiplier;\
-    color.rgb *= color.a;\
-    color.a = saturate(pow(color.a, 2));\
-    color.a *= _baseLum;\
-    color.a *= saturate(pow(_baseAlpha, 2));
+    color.rgb = (color.rgb * pow(color.a,2) * 1);\
+    color.a = 0;
     
 
 #define CUSTOM_BLOOM_FRAG_APPLY(color, multiplier) \

@@ -6,7 +6,7 @@
 
         [Space(20)]
         [Toggle(SECONDARY_COLOR)] _EnableSecondaryColor ("Use Secondary Color", float) = 0
-        _SecondaryColor ("Secondary Color", Vector) = (1,1,1,1)
+        _SecondaryColor ("Secondary Color", Color) = (1,1,1,1)
         _SecondaryColorTex ("Secondary Color Texture", 2D) = "white" {}
         _SecondaryColorPanning ("Secondary Color Panning", Vector) = (0,0,0,0)
 
@@ -102,7 +102,12 @@
         _Mask2Strength ("Secondary Mask Strength", float) = 1
         _Mask2Panning ("Secondary Mask Panning", Vector) = (0,0,0,0)
 
-
+        [Space(20)]
+        [KeywordEnum(None, Simple)] _Distortion ("Distortion", float) = 0
+        _DistortionTex ("Distortion Texture", 2D) = "black" {}
+        _DistortionStrength ("Distortion Strength", float) = 0.2
+        _DistortionAxes ("Distortion Axes", Vector) = (1, 1, 0, 0)
+        _DistortionPanning ("Distortion Panning", Vector) = (0, 0, 0, 0)
 
         [Header(Dissolve)] [Space]
         [KeywordEnum(None, Alpha Clip)] _CutoutType ("Cutout", float) = 0
@@ -234,6 +239,8 @@
             #pragma shader_feature_local_fragment MASK2_RED_IS_ALPHA
             #pragma shader_feature_local_fragment _ _MASK2BLEND_ADD _MASK2BLEND_MASKED_ADD
 
+            #pragma shader_feature_local _ _DISTORTION_SIMPLE
+
             #pragma shader_feature_local_fragment _ _CUTOUTTYPE_ALPHA_CLIP
 
             #pragma shader_feature_local_fragment SQUARE_ALPHA
@@ -256,6 +263,7 @@
             #include "ShaderLibrary/CustomBloom.hlsl"
             #include "ShaderLibrary/CustomTime.hlsl"
             #include "ShaderLibrary/CustomTonemapping.hlsl"
+            #include "Packages/com.llealloo.audiolink/Runtime/Shaders/AudioLink.cginc"
 
             // SECONDARY_COLOR
             sampler2D _SecondaryColorTex;
@@ -332,6 +340,12 @@
             float4 _Mask2Panning;
             // --
 
+            sampler2D _DistortionTex;
+            float4 _DistortionTex_ST;
+            float2 _DistortionPanning;
+            float _DistortionStrength;
+            float2 _DistortionAxes;
+
             // _CUTOUTTYPE_ALPHA_CLIP
             float _Cutout;
             // --
@@ -398,6 +412,7 @@
                 float4 color : COLOR;
                 #endif
                 float3 normal : NORMAL;
+                float4 tangent : TANGENT;
                 float2 uv1 : TEXCOORD0;
                 #if defined(_SECONDARY_UVS_IMPORT)
                 float2 uv2 : TEXCOORD1;
@@ -427,6 +442,11 @@
                 #endif
                 float3 worldPos : TEXCOORD1;
                 float4 screenPos : TEXCOORD2;
+
+                #if defined(_DISTORTION_SIMPLE)
+                float2 distortionUv : TEXCOORD3;
+                #endif
+
                 UNITY_VERTEX_INPUT_INSTANCE_ID
                 UNITY_VERTEX_OUTPUT_STEREO
             };
@@ -466,6 +486,33 @@
                 #endif
 
                 #else
+
+                #if defined(VERTEX_DISPLACEMENT)
+                float4 time = GET_TIME(UNITY_ACCESS_INSTANCED_PROP(Props, _TimeOffset)) / 2;
+                float2 dispUV = TRANSFORM_TEX(i.uv1, _DisplacementTex) 
+                              + _DisplacementPanning.xy * time.y * _DisplacementPanningSpeed;
+                float3 dispSample = tex2Dlod(_DisplacementTex, float4(dispUV, 0, 0)).xyz * 2.0 - 1.0;
+
+                #if defined(SPATIAL_DISPLACEMENT)
+                float3 bitangent = i.tangent.yzx * i.normal.zxy - i.normal.yzx * i.tangent.zxy;
+                float3 dispDir = dispSample.x * i.tangent.xyz
+                               + dispSample.y * bitangent
+                               + dispSample.z * i.normal.xyz;
+                dispDir = normalize(dispDir);
+
+                #if defined(_SPECTROGRAM_FLAT) || defined(_SPECTROGRAM_FULL)
+                float spectrogramIndex = i.uv3.x * _UV3Scale + _UV3Offset;
+                float4 audioData = AudioLinkLerpMultiline(ALPASS_DFT + uint2(spectrogramIndex * AUDIOLINK_ETOTALBINS, 0));
+                float dispAmount = _DisplacementStrength * audioData.b*2;
+                #else
+                float dispAmount = _DisplacementStrength;
+                #endif
+                i.vertex.xyz += dispDir * dispAmount * _DisplacementAxes.xyz;
+                #else
+                i.vertex.y += dispSample.x * _DisplacementStrength;
+                #endif
+                #endif
+
                 float angle, s, c;
                 #if defined(_CURVE_VERTICES_AROUND_X)
                 angle = i.vertex.y;
@@ -478,10 +525,10 @@
                 i.vertex.xyz = float3(i.vertex.x * c - i.vertex.z * s, i.vertex.y, i.vertex.x * s + i.vertex.z * c);
                 float3 normal = float3(i.normal.x * c - i.normal.z * s, i.normal.y, i.normal.x * s + i.normal.z * c);
                 #elif defined(_CURVE_VERTICES_AROUND_Z)
-                angle = -i.vertex.y;
+                angle = i.vertex.y / i.vertex.x;
                 sincos(angle, s, c);
-                i.vertex.xyz = float3(i.vertex.x * c - i.vertex.y * s, i.vertex.x * s + i.vertex.y * c, i.vertex.z);
-                float3 normal = float3(i.normal.x * c - i.normal.y * s, i.normal.x * s + i.normal.y * c, i.normal.z);
+                i.vertex.xyz = float3(i.vertex.x * c, i.vertex.x * s, i.vertex.z);
+                float3 normal = float3(i.normal.x * c, i.normal.x * s, i.normal.z);
                 #endif
 
                 o.vertex = UnityFlipSprite(i.vertex, _Flip);
@@ -489,6 +536,14 @@
                 o.vertex = UnityObjectToClipPos(o.vertex);
                 #endif
                 o.uv.xy = i.uv1.xy;
+                #if defined(_DISTORTION_SIMPLE)
+                    #if !defined(VERTEX_DISPLACEMENT)
+                    float4 time = GET_TIME(UNITY_ACCESS_INSTANCED_PROP(Props, _TimeOffset)) / 2;
+                    #endif
+                    float2 distortionPanOffset = time.y * _DistortionPanning * _DistortionTex_ST.xy;
+                    o.distortionUv = i.uv1.xy * _DistortionTex_ST.xy + _DistortionTex_ST.zw
+                                     + distortionPanOffset * 0.1;
+                #endif
                 #if defined(_SECONDARY_UVS_IMPORT)
                 o.uv.zw = i.uv2.xy;
                 #endif
@@ -541,11 +596,19 @@
                 #else
                 float4 albedo = color;
                 #endif
+                #if defined(_DISTORTION_SIMPLE)
+                float2 distortionSample = tex2D(_DistortionTex, i.distortionUv).rg;
+                #endif
                 #if defined(MAIN_TEXTURE)
                 #if defined(PIXELATE)
                 float2 uv = floor(i.uv * _PixelateResolution) / _PixelateResolution;
                 #else
-                float2 uv = i.uv;
+                #if defined(_DISTORTION_SIMPLE)
+                float2 uv = (distortionSample * (_DistortionStrength * 0.1) * _DistortionAxes 
+            * 2.0 + i.uv.xy) - 1.0;
+                #else
+                float2 uv = i.uv.xy;
+                #endif
                 #endif
                 #if defined(TEXTURE_FLIPBOOK)
                 uv.x /= _FlipbookColumns;
@@ -569,8 +632,10 @@
                 albedo.rgb *= _Intensity;
 
                 #if defined(SECONDARY_COLOR)
-                albedo.rgb *= tex2D(_SecondaryColorTex,
-                                TRANSFORM_TEX(i.uv, _SecondaryColorTex) + _SecondaryColorPanning * time.yy);
+                float4 secondaryColorTex = tex2D(_SecondaryColorTex, TRANSFORM_TEX(i.uv, _SecondaryColorTex) + _SecondaryColorPanning * time.yy);
+                float3 blendedColor = lerp(UNITY_ACCESS_INSTANCED_PROP(Props, _Color).rgb, UNITY_ACCESS_INSTANCED_PROP(Props, _SecondaryColor).rgb,
+                    saturate(secondaryColorTex.r));
+                albedo.rgb *= blendedColor;
                 #endif
 
                 #if defined(COLOR_GRADIENT)
