@@ -120,7 +120,7 @@
 
 
         [Header(Parallax)] [Space]
-        [EnumHeader(None, Flexible, RGB)] _Parallax ("Parallax Emission", Float) = 0
+        [KeywordEnum(None, Flexible, RGB)] _Parallax ("Parallax Emission", Float) = 0
         [Toggle(_PARALLAX_FLEXIBLE_REFLECTED)] _EnableReflectedDir ("Reflected Direction", Float) = 0
         [KeywordEnum(Planar, Warped)] _Parallax_Projection ("Parallax Projection", Float) = 0
         _ParallaxColor ("Parallax Color", Color) = (1, 1, 1, 1)
@@ -141,7 +141,16 @@
         _ParallaxMaskSpeed ("Mask Speed", Vector) = (0, 0, 0, 0)
         _ParallaxMaskIntensity ("Mask Intensity", Range(0, 1)) = 1
 
+        [Header(Distortion)] [Space]
+        [Toggle(DISTORTION_SIMPLE)] _EnableDistortion ("Distortion", float) = 0
+        _DistortionTex ("Distortion Texture", 2D) = "white" {}
+        _DistortionStrength ("Strength", float) = 0.1
+        _DistortionPanning ("Panning", Vector) = (1, 1, 0, 0)
+        _DistortionAxes ("Axes", Vector) = (1, 1, 0, 0)
+
         [Header(Reflection)] [Space]
+        [Toggle(MULTIPLY_REFLECTIONS)] _EnableMultiplyReflections ("Multiply Reflections", float) = 0
+        [Toggle(REFLECTION_PROBE_BOX_PROJECTION)] _EnableBoxProjection ("Box Projection", float) = 0
         [Toggle(RIM_DIM)] _EnableRimDim ("Rim Dim", float) = 0
         [Toggle(INVERT_RIM_DIM)] _InvertRimDim ("Invert", float) = 0
         _RimScale ("Scale", float) = 1
@@ -289,6 +298,10 @@
             #pragma shader_feature_local_fragment SECONDARY_UVS_PARALLAX
             #pragma shader_feature_local_fragment _ _PARALLAX_MASKING_TEXTURE _PARALLAX_MASKING_VERTEX_COLOR
 
+            #pragma shader_feature_local_fragment DISTORTION_SIMPLE
+            #pragma shader_feature_local_fragment MULTIPLY_REFLECTIONS
+            #pragma shader_feature_local_fragment REFLECTION_PROBE_BOX_PROJECTION
+
             #pragma shader_feature_local_fragment GROUND_FADE
 
             #pragma shader_feature_local_fragment _ _CUSTOM_TIME_SONG_TIME _CUSTOM_TIME_FREEZE
@@ -415,6 +428,14 @@
             float _RimDistanceScale;
             float _RimSmoothness;
             float _RimDarkening;
+            // --
+
+            // DISTORTION_SIMPLE
+            sampler2D _DistortionTex;
+            float4 _DistortionTex_ST;
+            float _DistortionStrength;
+            float2 _DistortionPanning;
+            float2 _DistortionAxes;
             // --
 
             // PARALLAX_IRIDESCENCE
@@ -717,9 +738,25 @@
                 //albedo.a *= _NominalDiffuseLevel.a;
                 
                 #else
-                //albedo.rgb += calculated.rgb;
-                //albedo = max(_NominalDiffuseLevel * albedo, _AmbientMinimalValue) * _AmbientMultiplier;
-                albedo.rgb = albedo.rgb;
+                float3 ambientTerm = max(_AmbientMultiplier * _NominalDiffuseLevel.rgb, _AmbientMinimalValue);
+                albedo.rgb *= ambientTerm;
+
+                // MULTIPLY_REFLECTIONS
+                #if defined(MULTIPLY_REFLECTIONS)
+                {
+                    float3 reflDir = reflect(normalize(worldPos - _WorldSpaceCameraPos), worldNormal);
+                    #if defined(REFLECTION_PROBE_BOX_PROJECTION)
+                    reflDir = BoxProjectedCubemapDirection(reflDir, worldPos,
+                              unity_SpecCube0_ProbePosition,
+                              unity_SpecCube0_BoxMin,
+                              unity_SpecCube0_BoxMax);
+                    #endif
+                    float4 reflSample = UNITY_SAMPLE_TEXCUBE_LOD(unity_SpecCube0, reflDir,
+                                        (1.0 - _Smoothness) * UNITY_SPECCUBE_LOD_STEPS);
+                    float3 reflColor = DecodeHDR(reflSample, unity_SpecCube0_HDR);
+                    albedo.rgb *= 1.0 + reflColor * _Metallic;
+                }
+                #endif
                 #endif
 
                 // EMISSION
@@ -727,23 +764,20 @@
                 ACES_TONE_MAPPING_APPLY(albedo);
                 #endif
 
-                // PARALLAX IRIDESCENCE
+
                 #if defined(_PARALLAX_FLEXIBLE) || defined(_PARALLAX_RGB)
                 {
                     float2 baseUv = i.uv.xy * _InputUvMultiplier;
                     float4 timeVal = GET_TIME(UNITY_ACCESS_INSTANCED_PROP(Props, _TimeOffset));
 
-                    // Camera-to-surface direction
                     float3 dirToCam = normalize(i.worldPos.xyz - _WorldSpaceCameraPos);
 
                     #if defined(_PARALLAX_FLEXIBLE_REFLECTED)
-                    // Use reflected direction for iridescence
                     float3 iridDir = dirToCam - 2.0 * dot(dirToCam, worldNormal) * worldNormal;
                     #else
                     float3 iridDir = dirToCam;
                     #endif
 
-                    // Iridescence hue from direction dot axes
                     #if defined(PARALLAX_IRIDESCENCE)
                     float iridDot = dot(iridDir, _IridescenceAxesMultiplier);
                     iridDot = frac(iridDot * _IridescenceTiling);
@@ -786,8 +820,6 @@
                         float intensity = (_ParallaxIntensity_Step * lf + _ParallaxIntensity) * parallaxSample.x;
                         layerColor += intensity * layerIrid;
                     }
-
-                    // Masking
                     #if defined(_PARALLAX_MASKING_VERTEX_COLOR)
                     layerColor *= i.color.g;
                     #elif defined(_PARALLAX_MASKING_TEXTURE)
@@ -795,18 +827,25 @@
                         TRANSFORM_TEX(baseUv, _ParallaxMaskingMap) + _ParallaxMaskSpeed * timeVal.y);
                     layerColor = lerp(layerColor, layerColor * maskSample.r, _ParallaxMaskIntensity);
                     #endif
-
-                    // Blend toward grayscale via IridescenceColorInfluence, then tint and add
                     float grayLayer = (layerColor.r + layerColor.g + layerColor.b) * 0.5;
-                    float3 blended = _IridescenceColorInfluence.xxx * (grayLayer.xxx * _ParallaxColor.xyz - layerColor) + layerColor;
-                    albedo.rgb += blended * _ParallaxColor.a;
+                    float3 blended = _IridescenceColorInfluence.xxx * (grayLayer.xxx * _ParallaxColor.rgb - layerColor) + layerColor;
+                    albedo.rgb += blended * _ParallaxColor.rgb;
                 }
                 #endif
 
                 #if USE_EMISSION_TEXTURE_COLOR
 
                 #if USE_EMISSION_TEXTURE
-                float2 emissionUv = i.uv;
+                float2 emissionUv = i.uv.xy * _InputUvMultiplier;
+                #if defined(DISTORTION_SIMPLE)
+                {
+                    float2 distortScrollUv = emissionUv * _DistortionTex_ST.xy
+                                           + _DistortionTex_ST.zw
+                                           + _DistortionPanning * time.y * 0.1;
+                    float2 distortSample = tex2D(_DistortionTex, distortScrollUv).xy;
+                    emissionUv += distortSample * (_DistortionStrength * 0.1) * _DistortionAxes;
+                }
+                #endif
                 #if defined(_EMISSIONTEXTURE_FLIPBOOK)
                 emissionUv.x /= _FlipbookColumns;
                 emissionUv.y /= _FlipbookRows;
