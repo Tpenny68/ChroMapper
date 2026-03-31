@@ -238,7 +238,14 @@
                 #endif
 
                 // texcoord1: xy=uv, z=width ratio for perspective-correct UV
-                o.texcoord1 = float3(i.uv * width / sizeParams.x, width / sizeParams.x);
+                float uvCentered = i.uv.y - 0.5;
+bool isCap = abs(uvCentered) >= 0.49;
+float uvSign = 0;
+if (uvCentered > 0) uvSign = 1;
+if (uvCentered < 0) uvSign = -1;
+float capOffset = isCap ? 0.0 : ((0.25 - _CapUVSize) * floor(uvSign));
+
+o.texcoord1 = float3(i.uv.x, i.uv.y + capOffset, width/ sizeParams.x);
                 o.screenPos = ComputeScreenPosCustom(o.vertex);
 
                 // AlphaStart/AlphaEnd: top half uses AlphaEnd, bottom uses AlphaStart
@@ -254,8 +261,8 @@
                 float4 color = UNITY_ACCESS_INSTANCED_PROP(Props, _Color);
 
                 // Perspective-correct UV sample
-                float2 adjustedUv = i.texcoord1.xy / i.texcoord1.z;
-                float4 texSample = tex2D(_MainTex, TRANSFORM_TEX(adjustedUv, _MainTex));
+                float2 adjustedUv = float2(i.texcoord1.x / i.texcoord1.z, i.texcoord1.y);
+float4 texSample = tex2D(_MainTex, adjustedUv);
 
                 // Cubic alpha from vertex alpha factor * Color.a, then squared with tex alpha
                 // Matches Output4: alpha = (texAlpha^2) * (alphaFactor^3 * Color.w)
@@ -284,8 +291,7 @@
                 alpha *= alpha;
                 #endif
 
-                // White boost: alpha^4 * WhiteBoostMultiplier^2 * BaseColorBoost - Threshold
-                // Matches Output4 frag pattern exactly
+
                 #if defined(_WHITEBOOSTTYPE_ALWAYS) || defined(_WHITEBOOSTTYPE_MAINEFFECT)
                 float boost = alpha * alpha;
                 boost = boost * _WhiteBoostMultiplier;

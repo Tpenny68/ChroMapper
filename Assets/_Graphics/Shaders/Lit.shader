@@ -216,7 +216,7 @@
         [Enum(UnityEngine.Rendering.CompareFunction)] _StencilComp ("Stencil Comp Func", Float) = 8
         [Enum(UnityEngine.Rendering.StencilOp)] _StencilPass ("Stencil Pass Op", Float) = 0
         _BaseColorBoost ("Base Color Boost", float) = 1
-        _BaseColorBoostThreshold ("Base Color Boost Threshold", float) = 0
+        _BaseColorBoostThreshold ("Base Color Boost Threshold", float) = 0.5
     }
     SubShader
     {
