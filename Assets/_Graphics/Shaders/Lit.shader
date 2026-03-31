@@ -386,6 +386,8 @@
 
             float _EmissionTexBloomIntensity;
             float _EmissionTexWhiteBoostMultiplier;
+            float _BaseColorBoost;
+            float _BaseColorBoostThreshold;
 
             #define USE_EMISSION_MASK defined(_EMISSIONTEXTURE_PULSE) || defined(_EMISSIONTEXTURE_SIMPLE)
             // USE_EMISSION_MASK
@@ -683,8 +685,8 @@
 
                 #if USE_VERTEX_EMISSION
                 albedo.rgba = 0;
-                albedo += i.emission;
-                albedo *= lerp(baseColor, albedo, emissionAlpha);
+                albedo.rgb += i.emission.rgb;
+                albedo.a = i.emission.a;
                 #endif
 
                 float3 worldPos = i.worldPos;
@@ -855,7 +857,7 @@
                                      _FlipbookRows);
                 #endif
                 #if defined(_EMISSIONTEXTURE_SIMPLE)
-                float4 emissionTex = tex2D(_EmissionTex,TRANSFORM_TEX(emissionUv, _EmissionTex) +_EmissionTexSpeed * time.yy).g;
+                float4 emissionTex = tex2D(_EmissionTex, TRANSFORM_TEX(emissionUv, _EmissionTex) + _EmissionTexSpeed * time.yy);
                 #else
                 float4 emissionTex = tex2D(_EmissionTex, TRANSFORM_TEX(emissionUv, _EmissionTex));
                 #endif
@@ -932,20 +934,46 @@
                 #endif
 
                 #endif
-                //BLOOM TYPES
-                #if defined(_EMISSIONBLOOMTYPE_PP)
-                CUSTOM_BLOOM_PP_APPLY(emissionTex, _EmissionTexBloomIntensity);
-                #elif defined(_EMISSIONBLOOMTYPE_FRAG)
-                CUSTOM_BLOOM_FRAG_APPLY(emissionTex, _EmissionTexWhiteBoostMultiplier);
-                #else
-                CUSTOM_BLOOM_NONE_APPLY(emissionTex);
-                #endif
-                
-                
-                
-                float4 finalEmission = emissionTex * UNITY_ACCESS_INSTANCED_PROP(Props, _EmissionTexColor) *
-                    saturate(UNITY_ACCESS_INSTANCED_PROP(Props, _EmissionTexColor).a);
-                albedo += finalEmission;
+                // Apply brightness to raw sampled values before any color treatment
+                emissionTex.a += UNITY_ACCESS_INSTANCED_PROP(Props, _EmissionBrightness);
+
+                {
+                    float4 emissionTexColor = UNITY_ACCESS_INSTANCED_PROP(Props, _EmissionTexColor);
+                    float4 finalEmission = 0;
+
+                    #if defined(_EMISSIONBLOOMTYPE_PP)
+                    // Matches CUSTOM_BLOOM_PP_APPLY: rgb = rgb * alpha² * multiplier, a = 0
+                    // Use luma as intensity so texture hue doesn't fight emissionTexColor tint
+                    {
+
+                        finalEmission.rgb = emissionTex.g * emissionTexColor.rgb
+                                          * (emissionTex.a * emissionTex.a)
+                                          * _EmissionTexBloomIntensity
+                                          * emissionTexColor.a;
+                        finalEmission.a = 0;
+                    }
+
+                    #elif defined(_EMISSIONBLOOMTYPE_FRAG)
+                    {
+                        float emissionG = emissionTex.g; // raw g, unscaled, for whiteboost
+                        float emissionR = emissionTex.r * UNITY_ACCESS_INSTANCED_PROP(Props, _EmissionBrightness);
+                        float bloomRaw = emissionG * emissionG * emissionTexColor.a;
+                        float whiteboost = emissionG * _EmissionTexWhiteBoostMultiplier;
+                        whiteboost = whiteboost * whiteboost * _BaseColorBoost - _BaseColorBoostThreshold;
+                        whiteboost *= emissionTexColor.a;  // fade whiteboost with alpha
+                        finalEmission.rgb = saturate(emissionR * emissionTexColor.rgb * emissionTexColor.a + whiteboost);
+                        finalEmission.a = bloomRaw * 3.5 * _EmissionTexBloomIntensity;
+                    }
+
+                    #else
+                    // Flat: straight multiply, no bloom
+                    // Matches CUSTOM_BLOOM_NONE_APPLY: rgb *= alpha, a = 0
+                    finalEmission.rgb = emissionTex.rgb * emissionTexColor.rgb * emissionTexColor.a;
+                    finalEmission.a = 0;
+                    #endif
+
+                    albedo += finalEmission;
+                }
 
                 
 

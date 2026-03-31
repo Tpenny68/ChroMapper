@@ -14,7 +14,7 @@
         [KeywordEnum(None, MainEffect, Always)] _WhiteBoostType ("White Boost", float) = 0
         _WhiteBoostMultiplier ("White Boost Multiplier", float) = 1
         _BaseColorBoost ("Base Color Boost", float) = 1
-        _BaseColorBoostThreshold ("Base Color Boost Threshold", float) = 0
+        _BaseColorBoostThreshold ("Base Color Boost Threshold", float) = 0.1
         _BloomMultiplier ("Bloom Multiplier", float) = 1
 
         [Header(Others)] [Space]
